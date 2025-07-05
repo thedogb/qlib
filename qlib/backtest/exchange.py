@@ -138,6 +138,8 @@ class Exchange:
 
         if limit_threshold is None:
             limit_threshold = C.limit_threshold
+        if isinstance(limit_threshold, list):
+            limit_threshold = tuple(limit_threshold)
         if deal_price is None:
             deal_price = C.deal_price
 
