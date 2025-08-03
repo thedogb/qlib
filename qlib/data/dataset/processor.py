@@ -125,6 +125,27 @@ class DropCol(Processor):
     def readonly(self):
         return True
 
+class CateCol(Processor):
+    def __init__(self, col_list=[]):
+        self.col_list = col_list
+
+    def __call__(self, df):
+        if isinstance(df.columns, pd.MultiIndex):
+            # 遍历每一列的完整 MultiIndex 元组
+            for col in df.columns:
+                # 如果 MultiIndex 的最后一级在 col_list 中，就转换它的类型
+                if col[-1] in self.col_list:
+                    df[col] = df[col].astype('category')
+        else:
+            for col in self.col_list:
+                if col in df.columns:
+                    df[col] = df[col].astype('category')
+        return df
+
+    def readonly(self):
+        return False
+
+
 
 class FilterCol(Processor):
     def __init__(self, fields_group="feature", col_list=[]):

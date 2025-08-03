@@ -574,7 +574,7 @@ class DatasetProvider(abc.ABC):
         data = dict(
             zip(
                 inst_l,
-                ParallelExt(n_jobs=workers, backend=C.joblib_backend, maxtasksperchild=C.maxtasksperchild)(task_l),
+                ParallelExt(verbose=10,n_jobs=workers, backend=C.joblib_backend, maxtasksperchild=C.maxtasksperchild)(task_l),
             )
         )
 

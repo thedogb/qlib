@@ -34,7 +34,7 @@ class LGBModel(ModelFT, LightGBMFInt):
         assert "train" in dataset.segments
         for key in ["train", "valid"]:
             if key in dataset.segments:
-                df = dataset.prepare(key, col_set=["feature", "label"], data_key=DataHandlerLP.DK_L)
+                df = dataset.prepare(key, col_set=["feature", "label", 'weight'], data_key=DataHandlerLP.DK_L)
                 if df.empty:
                     raise ValueError("Empty data from dataset, please check your dataset config.")
                 x, y = df["feature"], df["label"]
@@ -51,7 +51,8 @@ class LGBModel(ModelFT, LightGBMFInt):
                     w = reweighter.reweight(df)
                 else:
                     raise ValueError("Unsupported reweighter type.")
-                ds_l.append((lgb.Dataset(x.values, label=y, weight=w), key))
+                cat_cols = x.select_dtypes(['category']).columns.tolist()
+                ds_l.append((lgb.Dataset(x, label=y, weight=w, categorical_feature=cat_cols), key))
         return ds_l
 
     def fit(
