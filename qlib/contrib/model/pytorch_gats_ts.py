@@ -374,14 +374,14 @@ class GATModel(nn.Module):
         self.softmax = nn.Softmax(dim=1)
 
     def cal_attention(self, x, y):
-        x = self.transformation(x)
+        x = self.transformation(x) # [batch, hidden_size]
         y = self.transformation(y)
 
         sample_num = x.shape[0]
         dim = x.shape[1]
-        e_x = x.expand(sample_num, sample_num, dim)
-        e_y = torch.transpose(e_x, 0, 1)
-        attention_in = torch.cat((e_x, e_y), 2).view(-1, dim * 2)
+        e_x = x.expand(sample_num, sample_num, dim) # [batch, batch, hidden_size]
+        e_y = torch.transpose(e_x, 0, 1) # [batch, batch, hidden_size] 转置
+        attention_in = torch.cat((e_x, e_y), 2).view(-1, dim * 2) # [batch*batch, hidden_size * hidden_size]
         self.a_t = torch.t(self.a)
         attention_out = self.a_t.mm(torch.t(attention_in)).view(sample_num, sample_num)
         attention_out = self.leaky_relu(attention_out)
