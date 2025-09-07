@@ -11,7 +11,7 @@ from typing import List, Union
 
 from qlib.log import get_module_logger
 from qlib.utils.exceptions import LoadObjectError
-from qlib.workflow.online.update import PredUpdater
+from qlib.workflow.online.update import PredUpdater, LabelUpdater
 from qlib.workflow.recorder import Recorder
 from qlib.workflow.task.utils import list_recorders
 
@@ -176,6 +176,27 @@ class OnlineToolR(OnlineTool):
             updater.update()
 
         self.logger.info(f"Finished updating {len(online_models)} online model predictions of {exp_name}.")
+
+    def update_online_label(self, to_date=None, from_date=None, exp_name: str = None):
+        """
+        Update the predictions of online models to to_date.
+
+        Args:
+            to_date (pd.Timestamp): the pred before this date will be updated. None for updating to latest time in Calendar.
+            exp_name (str): the experiment name. If None, then use default_exp_name.
+        """
+        exp_name = self._get_exp_name(exp_name)
+        online_models = self.online_models(exp_name=exp_name)
+        for rec in online_models:
+            try:
+                updater = LabelUpdater(rec, to_date=to_date, from_date=from_date)
+            except LoadObjectError as e:
+                # skip the recorder without pred
+                self.logger.warn(f"An exception `{str(e)}` happened when load `label.pkl`, skip it.")
+                continue
+            updater.update()
+
+        self.logger.info(f"Finished updating {len(online_models)} online model label of {exp_name}.")
 
     def _get_exp_name(self, exp_name):
         if exp_name is None:

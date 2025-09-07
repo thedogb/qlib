@@ -40,13 +40,23 @@ def _log_task_info(task_config: dict):
 
 
 def _exe_task(task_config: dict):
-    rec = R.get_recorder()
-    # model & dataset initialization
-    model: Model = init_instance_by_config(task_config["model"], accept_types=Model)
-    dataset: Dataset = init_instance_by_config(task_config["dataset"], accept_types=Dataset)
-    reweighter: Reweighter = None if task_config.get("reweighter", None) is None else init_instance_by_config(task_config["reweighter"], accept_types=Reweighter)
-    # model training
-    auto_filter_kwargs(model.fit)(dataset, reweighter=reweighter)
+    if 'recorder_id' in task_config:
+        recorder_id = task_config['recorder_id']
+        restore_rec = R.get_recorder(recorder_id=recorder_id)
+        model = restore_rec.load_object('params.pkl')
+        dataset: Dataset = init_instance_by_config(task_config["dataset"], accept_types=Dataset)
+        get_module_logger("load model").info(
+            f"load model success: {recorder_id} "
+        )
+        rec = R.get_recorder()
+    else:
+        rec = R.get_recorder()
+        # model & dataset initialization
+        model: Model = init_instance_by_config(task_config["model"], accept_types=Model)
+        dataset: Dataset = init_instance_by_config(task_config["dataset"], accept_types=Dataset)
+        reweighter: Reweighter = None if task_config.get("reweighter", None) is None else init_instance_by_config(task_config["reweighter"], accept_types=Reweighter)
+        # model training
+        auto_filter_kwargs(model.fit)(dataset, reweighter=reweighter)
     R.save_objects(**{"params.pkl": model})
     # this dataset is saved for online inference. So the concrete data should not be dumped
     dataset.config(dump_all=False, recursive=True)

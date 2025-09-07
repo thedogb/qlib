@@ -5,7 +5,7 @@ import abc
 import shutil
 import traceback
 from pathlib import Path
-from typing import Iterable, List, Union
+from typing import Iterable, List, Union, Iterable, Optional, Union, Set
 from functools import partial
 from concurrent.futures import ThreadPoolExecutor, as_completed, ProcessPoolExecutor
 
@@ -150,6 +150,19 @@ class DumpDataBase:
         )
 
     @staticmethod
+    def get_dump_fields_static(
+            df_columns: Iterable[str],
+            include_fields: Optional[Union[Set[str], Iterable[str]]] = None,
+            exclude_fields: Optional[Union[Set[str], Iterable[str]]] = None
+    ) -> Iterable[str]:
+        if include_fields:
+            return include_fields
+        elif exclude_fields:
+            return set(df_columns) - set(exclude_fields)
+        else:
+            return df_columns
+
+    @staticmethod
     def _read_calendars(calendar_path: Path) -> List[pd.Timestamp]:
         return sorted(
             map(
@@ -205,6 +218,27 @@ class DumpDataBase:
         return r_df
 
     @staticmethod
+    def data_merge_calendar_static(
+            df: pd.DataFrame,
+            calendars_list: List[pd.Timestamp],
+            date_field_name: str
+    ) -> pd.DataFrame:
+        calendars_df = pd.DataFrame(data=calendars_list, columns=[date_field_name])
+        calendars_df[date_field_name] = calendars_df[date_field_name].astype("datetime64[ns]")
+
+        cal_df = calendars_df[
+            (calendars_df[date_field_name] >= df[date_field_name].min()) &
+            (calendars_df[date_field_name] <= df[date_field_name].max())
+            ]
+
+        cal_df.set_index(date_field_name, inplace=True)
+        df = df.set_index(date_field_name)
+
+        r_df = df.reindex(cal_df.index)
+
+        return r_df
+
+    @staticmethod
     def get_datetime_index(df: pd.DataFrame, calendar_list: List[pd.Timestamp]) -> int:
         return calendar_list.index(df.index.min())
 
@@ -233,6 +267,84 @@ class DumpDataBase:
             else:
                 # append; self._mode == self.ALL_MODE or not bin_path.exists()
                 np.hstack([date_index, _df[field]]).astype("<f").tofile(str(bin_path.resolve()))
+
+    @staticmethod
+    def _data_to_bin_static(
+            df: pd.DataFrame,
+            calendar_list: List[pd.Timestamp],
+            features_dir: Path,
+            freq: str,
+            dump_file_suffix: str,
+            mode: str,
+            update_mode: str,
+            date_field_name: str,
+            include_fields: Optional[Union[Set[str], Iterable[str]]] = None,
+            exclude_fields: Optional[Union[Set[str], Iterable[str]]] = None,
+    ):
+        if df.empty:
+            logger.warning(f"{features_dir.name} data is None or empty")
+            return
+        if not calendar_list:
+            logger.warning("calendar_list is empty")
+            return
+
+        _df = DumpDataBase.data_merge_calendar_static(df, calendar_list, date_field_name)
+        if _df.empty:
+            logger.warning(f"{features_dir.name} data is not in calendars")
+            return
+
+        date_index = DumpDataBase.get_datetime_index(_df, calendar_list)
+
+        for field in DumpDataBase.get_dump_fields_static(_df.columns, include_fields, exclude_fields):
+            if field not in _df.columns:
+                continue
+
+            bin_path = features_dir / f"{field.lower()}.{freq}{dump_file_suffix}"
+            data_array = np.array(_df[field]).astype("<f")
+
+            if bin_path.exists() and mode == update_mode:
+                with bin_path.open("ab") as fp:
+                    data_array.tofile(fp)
+            else:
+                full_array = np.hstack([date_index, data_array]).astype("<f")
+                full_array.tofile(str(bin_path.resolve()))
+
+    @staticmethod
+    def _dump_bin_static(file_or_data: Union[Path, pd.DataFrame],
+                         calendar_list: List[pd.Timestamp],
+                         symbol_field_name: str,
+                         date_field_name: str,
+                         features_dir: Path,
+                         freq: str,
+                         dump_file_suffix: str,
+                         mode: str,
+                         update_mode: str,
+                         include_fields: Optional[Union[Set[str], Iterable[str]]] = None,
+                         exclude_fields: Optional[Union[Set[str], Iterable[str]]] = None,
+                         ):
+        if not calendar_list:
+            logger.warning("calendar_list is empty")
+            return
+
+        if isinstance(file_or_data, pd.DataFrame):
+            if file_or_data.empty:
+                return
+            code = fname_to_code(str(file_or_data.iloc[0][symbol_field_name]).lower())
+            df = file_or_data
+        else:
+            raise ValueError(f"not support {type(file_or_data)}")
+
+        if df is None or df.empty:
+            logger.warning(f"{code} data is None or empty")
+            return
+
+        df = df.drop_duplicates(date_field_name)
+
+        feature_path = features_dir.joinpath(code_to_fname(code).lower())
+        feature_path.mkdir(parents=True, exist_ok=True)
+
+        DumpDataBase._data_to_bin_static(df, calendar_list, feature_path, freq, dump_file_suffix, mode,
+        update_mode, date_field_name, include_fields, exclude_fields )
 
     def _dump_bin(self, file_or_data: [Path, pd.DataFrame], calendar_list: List[pd.Timestamp]):
         try:
@@ -281,7 +393,7 @@ class DumpDataAll(DumpDataBase):
         with tqdm(total=len(self.csv_files)) as p_bar:
             with ProcessPoolExecutor(max_workers=self.works) as executor:
                 for file_path, ((_begin_time, _end_time), _set_calendars) in zip(
-                    self.csv_files, executor.map(_fun, self.csv_files)
+                        self.csv_files, executor.map(_fun, self.csv_files)
                 ):
                     all_datetime = all_datetime | _set_calendars
                     if isinstance(_begin_time, pd.Timestamp) and isinstance(_end_time, pd.Timestamp):
@@ -310,7 +422,6 @@ class DumpDataAll(DumpDataBase):
         logger.info("start dump features......")
         _dump_func = partial(self._dump_bin, calendar_list=self._calendars_list)
         with tqdm(total=len(self.csv_files)) as p_bar:
-            # _dump_func(self.csv_files[0])
             with ProcessPoolExecutor(max_workers=self.works) as executor:
                 for _ in executor.map(_dump_func, self.csv_files):
                     p_bar.update()
@@ -331,7 +442,7 @@ class DumpDataFix(DumpDataAll):
         new_stock_files = sorted(
             filter(
                 lambda x: fname_to_code(x.name[: -len(self.file_suffix)].strip().lower()).upper()
-                not in self._old_instruments,
+                          not in self._old_instruments,
                 self.csv_files,
             )
         )
@@ -363,18 +474,18 @@ class DumpDataFix(DumpDataAll):
 
 class DumpDataUpdate(DumpDataBase):
     def __init__(
-        self,
-        csv_path: str,
-        qlib_dir: str,
-        backup_dir: str = None,
-        freq: str = "day",
-        max_workers: int = 16,
-        date_field_name: str = "date",
-        file_suffix: str = ".csv",
-        symbol_field_name: str = "symbol",
-        exclude_fields: str = "",
-        include_fields: str = "",
-        limit_nums: int = None,
+            self,
+            csv_path: str,
+            qlib_dir: str,
+            backup_dir: str = None,
+            freq: str = "day",
+            max_workers: int = 16,
+            date_field_name: str = "date",
+            file_suffix: str = ".csv",
+            symbol_field_name: str = "symbol",
+            exclude_fields: str = "",
+            include_fields: str = "",
+            limit_nums: int = None,
     ):
         """
 
@@ -479,7 +590,18 @@ class DumpDataUpdate(DumpDataBase):
                     )
                     if _update_calendars:
                         self._update_instruments[_code][self.INSTRUMENTS_END_FIELD] = self._format_datetime(_end)
-                        futures[executor.submit(self._dump_bin, _df, _update_calendars)] = _code
+                        # DumpDataBase._dump_bin_static( _df, _update_calendars,
+                        #                         self.symbol_field_name, self.date_field_name,
+                        #                         self._features_dir, self.freq,
+                        #                         self.DUMP_FILE_SUFFIX, self._mode,
+                        #                         self.UPDATE_MODE, self._include_fields,self._exclude_fields
+                        #                         )
+                        futures[executor.submit(DumpDataBase._dump_bin_static, _df, _update_calendars,
+                                                self.symbol_field_name, self.date_field_name,
+                                                self._features_dir, self.freq,
+                                                self.DUMP_FILE_SUFFIX, self._mode,
+                                                self.UPDATE_MODE, self._include_fields,self._exclude_fields
+                                                )] = _code
                 else:
                     # new stock
                     _dt_range = self._update_instruments.setdefault(_code, dict())

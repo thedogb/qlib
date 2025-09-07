@@ -75,6 +75,7 @@ class GATs(Model):
         GPU=0,
         n_jobs=10,
         seed=None,
+            batch_size=32,
         **kwargs,
     ):
         # Set logger.
@@ -97,6 +98,7 @@ class GATs(Model):
         self.device = torch.device("cuda:%d" % (GPU) if torch.cuda.is_available() and GPU >= 0 else "cpu")
         self.n_jobs = n_jobs
         self.seed = seed
+        self.batch_size = batch_size
 
         self.logger.info(
             "GATs parameters setting:"
@@ -114,7 +116,8 @@ class GATs(Model):
             "\nmodel_path : {}"
             "\nvisible_GPU : {}"
             "\nuse_GPU : {}"
-            "\nseed : {}".format(
+            "\nseed : {}"
+            "\nbatch_size: {}".format(
                 d_feat,
                 hidden_size,
                 num_layers,
@@ -130,6 +133,7 @@ class GATs(Model):
                 GPU,
                 self.use_gpu,
                 seed,
+                batch_size
             )
         )
 
@@ -315,6 +319,7 @@ class GATs(Model):
     def predict(self, dataset):
         if not self.fitted:
             raise ValueError("model is not fitted yet!")
+        self.GAT_model.rnn.flatten_parameters()
 
         dl_test = dataset.prepare("test", col_set=["feature", "label"], data_key=DataHandlerLP.DK_I)
         dl_test.config(fillna_type="ffill+bfill")
