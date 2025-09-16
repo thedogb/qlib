@@ -262,7 +262,7 @@ class Transformer(nn.Module):
         self.pos_encoder = PositionalEncoding(d_model)
         self.encoder_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=nhead, dropout=dropout)
         self.transformer_encoder = nn.TransformerEncoder(self.encoder_layer, num_layers=num_layers)
-        self.decoder_layer = nn.Linear(d_model, 1)
+        self.decoder_layer = nn.Linear(d_model, 20)
         self.device = device
         self.d_feat = d_feat
 
@@ -282,4 +282,4 @@ class Transformer(nn.Module):
         # [T, N, F] --> [N, T*F]
         output = self.decoder_layer(output.transpose(1, 0)[:, -1, :])  # [512, 1]
 
-        return output.squeeze()
+        return output
