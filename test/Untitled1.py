@@ -135,9 +135,10 @@ if __name__ == '__main__':
 
     model_config = {
             'class': 'TransformerModel',
-            'module_path': 'qlib.contrib.model.pytorch_transformer',
+            'module_path': 'qlib.contrib.model.pytorch_transformer_huggingface',
             'kwargs': {
                 'd_feat': 6,
+                'd_label': 20,
                 'd_model': 1,
                 'nhead': 1,
                 'num_layers': 1,
@@ -220,12 +221,13 @@ if __name__ == '__main__':
 
 
 
-    from qlib.contrib.model.pytorch_transformer import Transformer, PositionalEncoding
+    from qlib.contrib.model.pytorch_transformer_huggingface import CustomTransformerRegressor
     import torch
     import torch.nn as nn
     import torch.optim as optim
 
-    model = Transformer(6, 8, 4, 2, 0)
+    import pdb; pdb.set_trace()
+    model = CustomTransformerRegressor(6, 20, 8, 4, 2, 0)
     # pre = model.model(feature)
 
 
