@@ -71,6 +71,7 @@ task:
         model: <MODEL>
         dataset: <DATASET>
         pred_field: close_next1
+        close_field: close
     - class: SigAnaRecord
       module_path: qlib.workflow.record_temp
       kwargs:

@@ -193,7 +193,7 @@ class TransformerModel(Model):
             self.logger.info("evaluating...")
             train_loss, train_score = self.test_epoch(x_train, y_train)
             val_loss, val_score = self.test_epoch(x_valid, y_valid)
-            self.logger.info("train %.6f, valid %.6f" % (train_score, val_score))
+            self.logger.info("train %.6f, valid %.6f, best_score %.6f" % (train_score, val_score, best_score))
             evals_result["train"].append(train_score)
             evals_result["valid"].append(val_score)
 
