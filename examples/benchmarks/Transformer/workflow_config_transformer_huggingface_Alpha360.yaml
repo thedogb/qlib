@@ -1,35 +1,35 @@
 qlib_init:
-    provider_uri: "/home/bartender/src/qlib_bin"
-    region: cn
-    exp_manager:
-        class: MLflowExpManager
-        module_path: qlib.workflow.expm
-        kwargs:
-            uri: "http://localhost:5000"
-            default_exp_name: "hf360_5d_regression"
+  provider_uri: "/home/bartender/src/qlib_bin"
+  region: cn
+  exp_manager:
+    class: MLflowExpManager
+    module_path: qlib.workflow.expm
+    kwargs:
+      uri: "http://localhost:5000"
+      default_exp_name: "hf360_5d_regression"
 experiment_name: "hf360_5d_regression"
 recorder_name: "transformer_v1"
-market: &market csi300
+market: &market all
 benchmark: &benchmark SH000300
 data_handler_config: &data_handler_config
   start_time: 2008-01-01
-  end_time: 2010-12-31
+  end_time: 2025-09-01
   fit_start_time: 2008-01-01
-  fit_end_time: 2008-12-31
+  fit_end_time: 2023-12-31
   instruments: *market
   infer_processors:
-    - class: RobustZScoreNorm
-      kwargs:
-        fields_group: feature
-        clip_outlier: true
+    #    - class: RobustZScoreNorm
+    #      kwargs:
+    #        fields_group: feature
+    #        clip_outlier: true
     - class: Fillna
       kwargs:
         fields_group: feature
   learn_processors:
     - class: DropnaLabel
-    - class: CSRankNorm
-      kwargs:
-        fields_group: label
+  #    - class: CSRankNorm
+  #      kwargs:
+  #        fields_group: label
   label:
     - [ "Ref($close, -1) / $close - 1", "Ref($close, -2) / $close - 1", "Ref($close, -3) / $close - 1", "Ref($close, -4) / $close - 1", "Ref($close, -5) / $close - 1", "Ref($open, -1) / $close - 1", "Ref($open, -2) / $close - 1", "Ref($open, -3) / $close - 1", "Ref($open, -4) / $close - 1", "Ref($open, -5) / $close - 1", "Ref($high, -1) / $close - 1", "Ref($high, -2) / $close - 1", "Ref($high, -3) / $close - 1", "Ref($high, -4) / $close - 1", "Ref($high, -5) / $close - 1", "Ref($low, -1) / $close - 1", "Ref($low, -2) / $close - 1", "Ref($low, -3) / $close - 1", "Ref($low, -4) / $close - 1", "Ref($low, -5) / $close - 1" ]
     - [ 'close_next1', 'close_next2', 'close_next3', 'close_next4', 'close_next5', 'open_next1', 'open_next2', 'open_next3', 'open_next4', 'open_next5', 'high_next1', 'high_next2', 'high_next3', 'high_next4', 'high_next5', 'low_next1', 'low_next2', 'low_next3', 'low_next4', 'low_next5' ]
@@ -42,8 +42,8 @@ port_analysis_config: &port_analysis_config
       topk: 50
       n_drop: 5
   backtest:
-    start_time: 2010-01-01
-    end_time: 2010-12-31
+    start_time: 2025-01-01
+    end_time: 2025-09-01
     account: 100000000
     benchmark: *benchmark
     exchange_kwargs:
@@ -59,6 +59,11 @@ task:
     kwargs:
       d_feat: 6
       d_label: 20
+      d_model: 64
+      batch_size: 2048
+      nhead: 2
+      num_layers: 2
+      dropout: 0
       seed: 42
   dataset:
     class: DatasetH
@@ -69,9 +74,9 @@ task:
         module_path: qlib.contrib.data.handler
         kwargs: *data_handler_config
       segments:
-        train: [ 2008-01-01, 2008-12-31 ]
-        valid: [ 2009-01-01, 2009-12-31 ]
-        test: [ 2010-01-01, 2010-12-31 ]
+        train: [ 2010-01-01, 2023-12-31 ]
+        valid: [ 2024-01-01, 2024-12-31 ]
+        test: [ 2025-01-01, 2025-09-01 ]
   record:
     - class: SignalRecordForMulitScore
       module_path: qlib.workflow.record_temp

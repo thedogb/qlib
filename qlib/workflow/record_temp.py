@@ -163,33 +163,30 @@ class SignalRecordForMulitScore(RecordTemp):
     This is the Signal Record class that generates the signal prediction. This class inherits the ``RecordTemp`` class.
     """
 
-    def __init__(self, model=None, dataset=None, recorder=None, pred_field=None, close_field=None):
+    def __init__(self, model=None, dataset=None, recorder=None, pred_field=None):
         super().__init__(recorder=recorder)
         self.model = model
         self.dataset = dataset
         self.pred_field = pred_field
-        self.close_field = close_field
 
     @staticmethod
     def generate_label(dataset):
         with class_casting(dataset, DatasetH):
-            params = dict(segments="test", col_set=["feature", "label"], data_key=DataHandlerLP.DK_R)
+            params = dict(segments="test", col_set="label", data_key=DataHandlerLP.DK_R)
             try:
                 # Assume the backend handler is DataHandlerLP
-                df_test = dataset.prepare(**params)
-                raw_feature, raw_label = df_test["feature"], df_test["label"]
+                raw_label = dataset.prepare(**params)
             except TypeError:
                 # The argument number is not right
                 del params["data_key"]
                 # The backend handler should be DataHandler
-                df_test = dataset.prepare(**params)
-                raw_feature, raw_label = df_test["feature"], df_test["label"]
+                raw_label = dataset.prepare(**params)
             except AttributeError as e:
                 # The data handler is initialized with `drop_raw=True`...
                 # So raw_label is not available
                 logger.warning(f"Exception: {e}")
                 raw_label = None
-        return raw_label, raw_feature
+        return raw_label
 
     def generate(self, **kwargs):
         # generate prediction
@@ -211,12 +208,11 @@ class SignalRecordForMulitScore(RecordTemp):
         pprint(pred.head(5))
 
         if isinstance(self.dataset, DatasetH):
-            raw_label, raw_close = self.generate_label(self.dataset)
+            raw_label = self.generate_label(self.dataset)
             self.save(**{"label.pkl": raw_label})
-            self.save(**{"close.pkl": raw_close})
 
     def list(self):
-        return ["pred.pkl", "label.pkl", "pred_df.pkl", "close.pkl"]
+        return ["pred.pkl", "label.pkl", "pred_df.pkl" ]
 
 class SignalRecord(RecordTemp):
     """
