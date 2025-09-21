@@ -34,7 +34,6 @@ class TransformerModel(Model):
         nhead: int = 2,
         num_layers: int = 2,
         dropout: float = 0,
-        step_dim: int = 8,
         out_steps: int = 5,
         n_epochs=100,
         lr=0.0001,
@@ -69,7 +68,7 @@ class TransformerModel(Model):
             np.random.seed(self.seed)
             torch.manual_seed(self.seed)
 
-        self.model = CustomTransformerRegressor(d_feat, d_price, d_model, nhead, num_layers, dropout, step_dim, out_steps, self.device)
+        self.model = CustomTransformerRegressor(d_feat, d_price, d_model, nhead, num_layers, dropout, out_steps, self.device)
 
         if optimizer.lower() == "adam":
             self.train_optimizer = optim.Adam(self.model.parameters(), lr=self.lr, weight_decay=self.reg)
@@ -249,10 +248,11 @@ import torch.nn as nn
 import torch.optim as optim
 import torch
 import torch.nn as nn
-from transformers import BertConfig, BertModel
+from rotary_embedding_torch import RotaryEmbedding
+from transformers import BertConfig, BertModel, BartModel, BartConfig
 
 class CustomTransformerRegressor(nn.Module):
-    def __init__(self, n_features=6, n_price=4, d_model=64, nhead=4, num_layers=2, dropout=0.1, step_dim=8, out_steps=5, device=None):
+    def __init__(self, n_features=6, n_price=4, d_model=64, nhead=4, num_layers=2, dropout=0.1,out_steps=5, device=None):
         super().__init__()
 
         self.n_features = n_features
@@ -262,61 +262,62 @@ class CustomTransformerRegressor(nn.Module):
         self.num_layers = num_layers
         self.dropout = dropout
         self.device = device
-        self.step_dim = step_dim
         self.out_steps = out_steps
 
         # 配置 Transformer
-        config = BertConfig(
-            hidden_size=d_model,
-            num_hidden_layers=num_layers,
-            num_attention_heads=nhead,
-            intermediate_size=d_model * 4,
-            hidden_dropout_prob=dropout,
-            attention_probs_dropout_prob=dropout,
+        config = BartConfig(
+            d_model=d_model,  # hidden size
+            encoder_layers=num_layers,
+            decoder_layers=num_layers,
+            encoder_attention_heads=nhead,
+            decoder_attention_heads=nhead,
+            dropout=dropout,
+            is_encoder_decoder=True  # Bart 默认就是 True
         )
 
         # 使用 BertModel 的 encoder 部分
-        self.transformer = BertModel(config).to(device)
+        self.transformer = BartModel(config).to(device)
 
         # 输入投影，将 n_features 映射到 d_model
         self.input_proj = nn.Linear(n_features, d_model)
 
         # 输出 head
-        self.step_embed = nn.Embedding(out_steps, step_dim)
-        self.output_proj = nn.Linear(d_model + step_dim, n_price)
+        self.step_embed = nn.Embedding(out_steps, d_model)
+
+        # self.output_proj = nn.Linear(d_model, n_price)
+        self.layers = nn.ModuleList([
+            nn.Linear(d_model, n_price) for _ in range(out_steps)
+        ])
+        self.print=True
 
     def forward(self, x, attention_mask=None):
         """
         x: [batch_size, seq_len, n_features]
         attention_mask: [batch_size, seq_len] 可选
         """
+
+        if self.print:
+            print(x[0])
+            self.print=False
         # 输入投影
-        x = x.reshape(len(x), self.n_features, -1).permute(0, 2, 1)
+        x = x.reshape(len(x), self.n_features, -1).permute(0, 2, 1) # [B, seq_len, d_feat]
         x = self.input_proj(x)  # [batch_size, seq_len, d_model]
 
+        batch_size = x.size(0) # x_last: [B, d_model] -> [B, 64]
+        step_ids = torch.arange(self.out_steps, device=x.device).unsqueeze(0).expand(batch_size, -1)
+        s_dec = self.step_embed(step_ids)  # [B, out_steps, d_model]
+        # rope = RotaryEmbedding(dim=self.d_model // 2)  # dim = d_model / 2
+        # s_dec_rope = rope(s_dec)
+
         # Hugging Face Transformer 默认输入 shape: [batch_size, seq_len, hidden_size]
-        outputs = self.transformer(inputs_embeds=x, attention_mask=attention_mask)
+        outputs = self.transformer(inputs_embeds=x, decoder_inputs_embeds=s_dec)
+        dec_out = outputs.last_hidden_state  # [B, out_steps, d_model]
 
-        # 使用最后一个 token 或者 CLS token 做回归
-        # Hugging Face BertModel 默认返回 last_hidden_state: [batch_size, seq_len, hidden_size]
-        # 这里取 [CLS] token = first token
-        # 这里取[:,0,:] 是cls， 取[:, -1, :]是末次状态
-        cls_output = outputs.last_hidden_state[:, -1, :]  # [batch_size, d_model]
+        outs = []
+        for t, layer in enumerate(self.layers):
+            outs.append(layer(dec_out[:, t, :]))  # [B, n_price]
+        y = torch.stack(outs, dim=1)
 
-
-        x_last = cls_output
-        batch_size = x_last.size(0) # x_last: [B, d_model] -> [B, 64]
-        x_exp = x_last.unsqueeze(1).expand(batch_size, self.out_steps, -1) # out_steps = 5
-        # x_last.unsqueeze(1): [B, 1, d_model] -> [B, 1, 64]
-        # expand: [B, out_steps, 64] -> [B, 5, 64]
-        s_exp = self.step_embed.weight.unsqueeze(0).expand(batch_size, self.out_steps, -1)
-        # step_embed.weight: [out_steps, step_dim] -> [5, 8]
-        # unsqueeze(0): [1, 5, 8]
-        # expand: [B, 5, 8]
-        x_combined = torch.cat([x_exp, s_exp], dim=2)
-        # [B, 5, 64] + [B, 5, 8] -> [B, 5, 72]  # d_model + step_dim
-
-        y = self.output_proj(x_combined)  # [batch_size, out_steps, n_price]
         y_perm = y.permute(0, 2, 1)  # [B, n_price, out_steps]
 
         # reshape 展开成 [B, 20]

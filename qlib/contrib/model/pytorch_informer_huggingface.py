@@ -21,35 +21,38 @@ from ...model.base import Model
 from ...data.dataset import DatasetH
 from ...data.dataset.handler import DataHandlerLP
 
+
 # qrun examples/benchmarks/Transformer/workflow_config_transformer_Alpha360.yaml ”
 
 
-class TransformerModel(Model):
+class TstModel(Model):
     def __init__(
-        self,
-        d_feat: int = 6,
-        d_price: int = 4,
-        d_model: int = 64,
-        batch_size: int = 2048,
-        nhead: int = 2,
-        num_layers: int = 2,
-        dropout: float = 0,
-        step_dim: int = 8,
-        out_steps: int = 5,
-        n_epochs=100,
-        lr=0.0001,
-        metric="",
-        early_stop=5,
-        loss="mse",
-        optimizer="adam",
-        reg=1e-3,
-        n_jobs=10,
-        GPU=0,
-        seed=None,
-        **kwargs,
+            self,
+            d_feat: int = 6,
+            seq_len: int = 60,
+            d_price: int = 4,
+            d_model: int = 64,
+            batch_size: int = 2048,
+            nhead: int = 2,
+            num_layers: int = 2,
+            dropout: float = 0,
+            step_dim: int = 8,
+            out_steps: int = 5,
+            n_epochs=100,
+            lr=0.0001,
+            metric="",
+            early_stop=5,
+            loss="mse",
+            optimizer="adam",
+            reg=1e-3,
+            n_jobs=10,
+            GPU=0,
+            seed=None,
+            **kwargs,
     ):
         # set hyper-parameters.
         self.d_model = d_model
+        self.seq_len = seq_len
         self.dropout = dropout
         self.n_epochs = n_epochs
         self.lr = lr
@@ -62,14 +65,16 @@ class TransformerModel(Model):
         self.n_jobs = n_jobs
         self.device = torch.device("cuda:%d" % GPU if torch.cuda.is_available() and GPU >= 0 else "cpu")
         self.seed = seed
-        self.logger = get_module_logger("TransformerModel")
-        self.logger.info("Naive Transformer:" "\nbatch_size : {}" "\ndevice : {}".format(self.batch_size, self.device))
+        self.logger = get_module_logger("TstModel")
+        self.logger.info("Naive Tst:" "\nbatch_size : {}" "\ndevice : {}".format(self.batch_size, self.device))
 
         if self.seed is not None:
             np.random.seed(self.seed)
             torch.manual_seed(self.seed)
 
-        self.model = CustomTransformerRegressor(d_feat, d_price, d_model, nhead, num_layers, dropout, step_dim, out_steps, self.device)
+        self.model = PatchTST(d_feat, seq_len, n_price=d_price,
+                              d_model=d_model, nhead=nhead, num_layers=num_layers, dropout=dropout, step_dim=step_dim,
+                              out_steps=out_steps, device=self.device)
 
         if optimizer.lower() == "adam":
             self.train_optimizer = optim.Adam(self.model.parameters(), lr=self.lr, weight_decay=self.reg)
@@ -118,8 +123,8 @@ class TransformerModel(Model):
             if len(indices) - i < self.batch_size:
                 break
 
-            feature = torch.from_numpy(x_train_values[indices[i : i + self.batch_size]]).float().to(self.device)
-            label = torch.from_numpy(y_train_values[indices[i : i + self.batch_size]]).float().to(self.device)
+            feature = torch.from_numpy(x_train_values[indices[i: i + self.batch_size]]).float().to(self.device)
+            label = torch.from_numpy(y_train_values[indices[i: i + self.batch_size]]).float().to(self.device)
 
             pred = self.model(feature)
             loss = self.loss_fn(pred, label)
@@ -145,8 +150,8 @@ class TransformerModel(Model):
             if len(indices) - i < self.batch_size:
                 break
 
-            feature = torch.from_numpy(x_values[indices[i : i + self.batch_size]]).float().to(self.device)
-            label = torch.from_numpy(y_values[indices[i : i + self.batch_size]]).float().to(self.device)
+            feature = torch.from_numpy(x_values[indices[i: i + self.batch_size]]).float().to(self.device)
+            label = torch.from_numpy(y_values[indices[i: i + self.batch_size]]).float().to(self.device)
 
             with torch.no_grad():
                 pred = self.model(feature)
@@ -159,10 +164,10 @@ class TransformerModel(Model):
         return np.mean(losses), np.mean(scores)
 
     def fit(
-        self,
-        dataset: DatasetH,
-        evals_result=dict(),
-        save_path=None,
+            self,
+            dataset: DatasetH,
+            evals_result=dict(),
+            save_path=None,
     ):
         df_train, df_valid, df_test = dataset.prepare(
             ["train", "valid", "test"],
@@ -243,82 +248,140 @@ class TransformerModel(Model):
 
         return pd.DataFrame(np.concatenate(preds), index=index, columns=self.label_cols)
 
-from qlib.contrib.model.pytorch_transformer import Transformer, PositionalEncoding
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch
 import torch.nn as nn
-from transformers import BertConfig, BertModel
+from transformers import InformerModel, InformerConfig
 
-class CustomTransformerRegressor(nn.Module):
-    def __init__(self, n_features=6, n_price=4, d_model=64, nhead=4, num_layers=2, dropout=0.1, step_dim=8, out_steps=5, device=None):
+
+class PatchTST(nn.Module):
+    def __init__(self, n_features=6, seq_len=60, distribution_output='student_t', n_price=4, d_model=64,
+                 encoder_ffn_dim = 32,
+                 decoder_ffn_dim = 32,
+                 encoder_attention_heads = 2,
+                 decoder_attention_heads = 2,
+                 encoder_layers = 2,
+                 decoder_layers = 2,
+                 encoder_layerdrop: float = 0.1,
+                 decoder_layerdrop: float = 0.1,
+                 attention_dropout: float = 0.1,
+                 activation_dropout: float = 0.1,
+                 num_parallel_samples: int = 100,
+                 init_std: float = 0.02,
+                 use_cache=True,
+                 # Informer arguments
+                 attention_type: str = "prob",
+                 sampling_factor: int = 5,
+                 distil: bool = True,
+                 dropout=0.1, step_dim=8, out_steps=5, device=None):
         super().__init__()
 
         self.n_features = n_features
+        self.seq_len = seq_len
+        self.distribution_output = distribution_output
         self.n_price = n_price
         self.d_model = d_model
-        self.nhead = nhead
-        self.num_layers = num_layers
         self.dropout = dropout
         self.device = device
         self.step_dim = step_dim
         self.out_steps = out_steps
+        self.encoder_ffn_dim = encoder_ffn_dim
 
         # 配置 Transformer
-        config = BertConfig(
-            hidden_size=d_model,
-            num_hidden_layers=num_layers,
-            num_attention_heads=nhead,
-            intermediate_size=d_model * 4,
-            hidden_dropout_prob=dropout,
-            attention_probs_dropout_prob=dropout,
+        config = InformerConfig(
+            prediction_length = out_steps,
+            context_length= seq_len,
+            distribution_output = "student_t",
+            input_size = n_price,
+            lags_sequence = [1,2,3,4,5,10,20,60],
+            scaling='mean',
+            num_dynamic_real_features = n_features,
+            num_static_real_features = 0,
+            num_static_categorical_features = 0,
+            num_time_features = 0,
+            cardinality = None,
+            embedding_dimension = None,
+            d_model = d_model,
+            encoder_ffn_dim = encoder_ffn_dim,
+            decoder_ffn_dim = decoder_ffn_dim,
+            encoder_attention_heads = encoder_attention_heads,
+            decoder_attention_heads = decoder_attention_heads,
+            encoder_layers = encoder_layers,
+            decoder_layers = decoder_layers,
+            is_encoder_decoder= True,
+            activation_function = "gelu",
+            dropout = dropout,
+            encoder_layerdrop = encoder_layerdrop,
+            decoder_layerdrop = decoder_layerdrop,
+            attention_dropout = attention_dropout,
+            activation_dropout = activation_dropout,
+            num_parallel_samples = num_parallel_samples,
+            init_std = init_std,
+            use_cache = use_cache,
+            # Informer arguments
+            attention_type = attention_type,
+            sampling_factor = sampling_factor,
+            distil = distil
         )
 
         # 使用 BertModel 的 encoder 部分
-        self.transformer = BertModel(config).to(device)
+        self.transformer = InformerModel(config).to(device)
 
-        # 输入投影，将 n_features 映射到 d_model
-        self.input_proj = nn.Linear(n_features, d_model)
 
         # 输出 head
         self.step_embed = nn.Embedding(out_steps, step_dim)
         self.output_proj = nn.Linear(d_model + step_dim, n_price)
+        self.print = True
 
-    def forward(self, x, attention_mask=None):
+    def forward(self, x):
         """
         x: [batch_size, seq_len, n_features]
         attention_mask: [batch_size, seq_len] 可选
         """
         # 输入投影
-        x = x.reshape(len(x), self.n_features, -1).permute(0, 2, 1)
-        x = self.input_proj(x)  # [batch_size, seq_len, d_model]
+        if self.print:
+            print(x)
+            print('x shape:', x.shape)
+        x = x.reshape(len(x), self.n_features, -1).permute(0, 2, 1)  # [B, seq_len, d_fea]
+        if self.print:
+            print('x reshape: ', x.shape)
+        outputs = self.transformer(
+            past_time_features=x
+        )  # [B, out_step, n_model]
 
-        # Hugging Face Transformer 默认输入 shape: [batch_size, seq_len, hidden_size]
-        outputs = self.transformer(inputs_embeds=x, attention_mask=attention_mask)
+        if self.print:
+            print(outputs)
+            print('output shape: ', outputs.shape.shape)
 
-        # 使用最后一个 token 或者 CLS token 做回归
-        # Hugging Face BertModel 默认返回 last_hidden_state: [batch_size, seq_len, hidden_size]
-        # 这里取 [CLS] token = first token
-        # 这里取[:,0,:] 是cls， 取[:, -1, :]是末次状态
-        cls_output = outputs.last_hidden_state[:, -1, :]  # [batch_size, d_model]
-
-
-        x_last = cls_output
-        batch_size = x_last.size(0) # x_last: [B, d_model] -> [B, 64]
-        x_exp = x_last.unsqueeze(1).expand(batch_size, self.out_steps, -1) # out_steps = 5
+        x_exp = outputs
+        batch_size = x_exp.size(0)  # x_last: [B, d_model] -> [B, 64]
         # x_last.unsqueeze(1): [B, 1, d_model] -> [B, 1, 64]
         # expand: [B, out_steps, 64] -> [B, 5, 64]
         s_exp = self.step_embed.weight.unsqueeze(0).expand(batch_size, self.out_steps, -1)
+        if self.print:
+            print(s_exp)
+            print('s_exp shape: ', s_exp.shape)
         # step_embed.weight: [out_steps, step_dim] -> [5, 8]
         # unsqueeze(0): [1, 5, 8]
         # expand: [B, 5, 8]
         x_combined = torch.cat([x_exp, s_exp], dim=2)
+        if self.print:
+            print('x_combined shape: ', x_combined.shape)
         # [B, 5, 64] + [B, 5, 8] -> [B, 5, 72]  # d_model + step_dim
 
         y = self.output_proj(x_combined)  # [batch_size, out_steps, n_price]
+        if self.print:
+            print('y shape: ', y.shape)
         y_perm = y.permute(0, 2, 1)  # [B, n_price, out_steps]
+        if self.print:
+            print('y_perm shape: ', y_perm.shape)
 
         # reshape 展开成 [B, 20]
         y_flat = y_perm.reshape(batch_size, self.n_price * self.out_steps)  # [B, 20]
+        if self.print:
+            print('y_flat shape: ', y_flat.shape)
+        self.print = False
         return y_flat

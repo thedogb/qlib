@@ -7,8 +7,8 @@ qlib_init:
     kwargs:
       uri: "http://localhost:5000"
       default_exp_name: "hf360_5d_regression"
-experiment_name: "hf360_5d_regression"
-recorder_name: "transformer_v1_base_layers4_step_emb_last_state"
+experiment_name: "mlp360_5d_regression"
+recorder_name: "mlp_v1_base_layers"
 market: &market all
 benchmark: &benchmark SH000300
 data_handler_config: &data_handler_config
@@ -54,18 +54,15 @@ port_analysis_config: &port_analysis_config
       min_cost: 5
 task:
   model:
-    class: TransformerModel
-    module_path: qlib.contrib.model.pytorch_transformer_huggingface
+    class: MlpModel
+    module_path: qlib.contrib.model.pytorch_mlp
     kwargs:
-      d_feat: 6
-      d_price: 4
-      d_model: 64
+      input_dim: 360
+      hidden_dims: [512, 256, 64]
+      output_dim: 20
+      activation: 'relu'
       batch_size: 2048
-      nhead: 2
-      num_layers: 4
-      dropout: 0
-      step_dim: 8
-      out_steps: 5
+      n_epochs: 100
       seed: 42
   dataset:
     class: DatasetH

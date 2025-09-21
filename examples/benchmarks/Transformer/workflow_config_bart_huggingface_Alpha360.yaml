@@ -8,7 +8,7 @@ qlib_init:
       uri: "http://localhost:5000"
       default_exp_name: "hf360_5d_regression"
 experiment_name: "hf360_5d_regression"
-recorder_name: "transformer_v1_base_layers4_step_emb_last_state"
+recorder_name: "bart_v1_base_layers"
 market: &market all
 benchmark: &benchmark SH000300
 data_handler_config: &data_handler_config
@@ -55,17 +55,17 @@ port_analysis_config: &port_analysis_config
 task:
   model:
     class: TransformerModel
-    module_path: qlib.contrib.model.pytorch_transformer_huggingface
+    module_path: qlib.contrib.model.pytorch_bart_huggingface
     kwargs:
       d_feat: 6
       d_price: 4
-      d_model: 64
+      d_model: 8
       batch_size: 2048
-      nhead: 2
-      num_layers: 4
+      nhead: 1
+      num_layers: 1
       dropout: 0
-      step_dim: 8
       out_steps: 5
+      n_epochs: 3
       seed: 42
   dataset:
     class: DatasetH
