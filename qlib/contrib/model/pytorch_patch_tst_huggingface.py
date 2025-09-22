@@ -314,7 +314,7 @@ class PatchTST(nn.Module):
 
         # 输出 head
         self.step_embed = nn.Embedding(out_steps, step_dim)
-        self.output_proj = nn.Linear(d_model + step_dim, n_price)
+        self.output_proj = nn.Linear(n_features, n_price)
         self.print = True
 
     def forward(self, x):
@@ -335,25 +335,11 @@ class PatchTST(nn.Module):
 
         if self.print:
             print(outputs)
-            print('output shape: ', outputs.shape.shape)
 
-        x_exp = outputs
+        x_exp = outputs.prediction_outputs # [B, out_steps, d_fea]
         batch_size = x_exp.size(0)  # x_last: [B, d_model] -> [B, 64]
-        # x_last.unsqueeze(1): [B, 1, d_model] -> [B, 1, 64]
-        # expand: [B, out_steps, 64] -> [B, 5, 64]
-        s_exp = self.step_embed.weight.unsqueeze(0).expand(batch_size, self.out_steps, -1)
-        if self.print:
-            print(s_exp)
-            print('s_exp shape: ', s_exp.shape)
-        # step_embed.weight: [out_steps, step_dim] -> [5, 8]
-        # unsqueeze(0): [1, 5, 8]
-        # expand: [B, 5, 8]
-        x_combined = torch.cat([x_exp, s_exp], dim=2)
-        if self.print:
-            print('x_combined shape: ', x_combined.shape)
-        # [B, 5, 64] + [B, 5, 8] -> [B, 5, 72]  # d_model + step_dim
 
-        y = self.output_proj(x_combined)  # [batch_size, out_steps, n_price]
+        y = self.output_proj(x_exp)  # [batch_size, out_steps, n_price]
         if self.print:
             print('y shape: ', y.shape)
         y_perm = y.permute(0, 2, 1)  # [B, n_price, out_steps]
