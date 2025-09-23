@@ -1,5 +1,60 @@
 from qlib.data.dataset.loader import QlibDataLoader
 
+# class CustomAlpha360DL(QlibDataLoader):
+#     """Dataloader to get Alpha360"""
+#
+#     def __init__(self, config=None, **kwargs):
+#         _config = {
+#             "feature": self.get_feature_config(),
+#         }
+#         if config is not None:
+#             _config.update(config)
+#         super().__init__(config=_config, **kwargs)
+#
+#     @staticmethod
+#     def get_feature_config():
+#         # NOTE:
+#         # Alpha360 tries to provide a dataset with original price data
+#         # the original price data includes the prices and volume in the last 60 days.
+#         # To make it easier to learn models from this dataset, all the prices and volume
+#         # are normalized by the latest price and volume data ( dividing by $close, $volume)
+#         # So the latest normalized $close will be 1 (with name CLOSE0), the latest normalized $volume will be 1 (with name VOLUME0)
+#         # If further normalization are executed (e.g. centralization),  CLOSE0 and VOLUME0 will be 0.
+#         fields = []
+#         names = []
+#
+#         for i in range(59, 0, -1):
+#             fields += ["Ref($close, %d)/$close-1" % i]
+#             names += ["CLOSE%d" % i]
+#         fields += ["$close/$close-1"]
+#         names += ["CLOSE0"]
+#         for i in range(59, 0, -1):
+#             fields += ["Ref($open, %d)/$close-1" % i]
+#             names += ["OPEN%d" % i]
+#         fields += ["$open/$close-1"]
+#         names += ["OPEN0"]
+#         for i in range(59, 0, -1):
+#             fields += ["Ref($high, %d)/$close-1" % i]
+#             names += ["HIGH%d" % i]
+#         fields += ["$high/$close-1"]
+#         names += ["HIGH0"]
+#         for i in range(59, 0, -1):
+#             fields += ["Ref($low, %d)/$close-1" % i]
+#             names += ["LOW%d" % i]
+#         fields += ["$low/$close-1"]
+#         names += ["LOW0"]
+#         for i in range(59, 0, -1):
+#             fields += ["Ref($vwap, %d)/$close-1" % i]
+#             names += ["VWAP%d" % i]
+#         fields += ["$vwap/$close-1"]
+#         names += ["VWAP0"]
+#         for i in range(59, 0, -1):
+#             fields += ["Ref($volume, %d)/($volume+1e-12)-1" % i]
+#             names += ["VOLUME%d" % i]
+#         fields += ["$volume/($volume+1e-12)-1"]
+#         names += ["VOLUME0"]
+#
+#         return fields, names
 
 class Alpha360DL(QlibDataLoader):
     """Dataloader to get Alpha360"""
